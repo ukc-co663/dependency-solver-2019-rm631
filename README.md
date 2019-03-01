@@ -19,3 +19,12 @@ So, make sure it works.
 
 (You may get some errors about 'unseen' tests, unless you change tests/inside-test.sh.
 These errors don't count.)
+
+
+-------
+For some reason when I clone the repo into docker I don't have permission to run the scripts
+
+to fix, run: 
+```
+chmod 755 *
+```
