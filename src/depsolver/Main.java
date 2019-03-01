@@ -61,7 +61,7 @@ public class Main {
 		//System.out.println(Arrays.toString(set.toArray()));
 		//System.out.println("Search set printed!");
 		if(!valid(set, repo)) { ;return; }
-		System.out.println("Set valid");
+		//System.out.println("Set valid");
 		if(seenSet.contains(set)) { ;return; }
 		//System.out.println("Set not seen before");
 		if(finalState(set, constraints)) {

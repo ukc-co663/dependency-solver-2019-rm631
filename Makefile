@@ -4,7 +4,7 @@ compile: deps
 	./compile.sh
 
 deps:
-	RUN chmod +x ./install_deps.sh
+	./install_deps.sh
 	touch deps
 
 test: compile
