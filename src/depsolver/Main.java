@@ -1,3 +1,5 @@
+// TODO: The checks for whether things are < or > also work if <= or >=, add a check for = into the former 
+
 package depsolver;
 
 import com.alibaba.fastjson.JSON;
@@ -39,7 +41,8 @@ public class Main {
 	private static HashSet<List<String>> seenSet = new HashSet<>();
 	private static HashMap<String, Integer> solutions = new HashMap<>();
 	private static List<String> commands = new ArrayList<>();
-	private static boolean solutionFound;
+	private static boolean solutionFound = false;;
+	private static boolean initialSet = true;
 	
 	public static void main(String[] args) throws IOException {
 		TypeReference<List<Package>> repoType = new TypeReference<List<Package>>() {};
@@ -48,21 +51,36 @@ public class Main {
 		List<String> initial = JSON.parseObject(readFile(args[1]), strListType);
 		List<String> constraints = JSON.parseObject(readFile(args[2]), strListType);
 		
-		solutionFound = false;
+		/**
+		 *	The brief doesn't outright say that the initial set will be valid
+		 *	but that all intermediate states must be
+		 *	Regardless, if the initial has *a lot* of problems
+		 *	then it stands no chance of being valid
+		 *	hence we'll make sure the initial set is valid before we do anything else...
+		 */
+		while(!valid(initial,repo)) {
+			initial = removeProblemPackages(initial, repo);
+		}
+		
 		search(initial, repo, constraints);
-		//System.out.println(Arrays.asList(commands));
-		//System.out.println("Solutions: " + Arrays.asList(solutions));
 		printCheapestSolution();
 	}
 	
 	private static void search(List<String> set, List<Package> repo, List<String> constraints) {
-		//if(solutionFound) { return; }
+		//System.out.println(repo.size());
+		//if(solutionFound) { return; } // a catch all in case anything tries to search after we have our solution
 		//System.out.println("search() called");
 		//System.out.println(Arrays.toString(set.toArray()));
 		//System.out.println("Search set printed!");
-		if(!valid(set, repo)) { ;return; }
+		if(!valid(set, repo)) { 
+			/*if(initialSet) {
+				initialSet = false;
+				search(removeProblemPackages(set, repo), repo, constraints);
+			}*/
+			return; 
+		}
 		//System.out.println("Set valid");
-		if(seenSet.contains(set)) { ;return; }
+		if(seenSet.contains(set)) { return; }
 		//System.out.println("Set not seen before");
 		if(finalState(set, constraints)) {
 			solutionFound = true;
@@ -106,10 +124,9 @@ public class Main {
 			}*/
 		}
 		if(!solutionFound) {
-			// this is the catch for when initial has something that is a conflict 
-			// for something essential in the repo
-			// TODO: THIS!
-			// How do we know the cost of uninstalling something if it didnt start in the repo?
+			// this is the catch for when a solution hasn't been found
+			// we need to remove things from the set and try again!
+			//System.out.println("Solution not found!");
 		}
 		//System.out.println(Arrays.asList(commands));
 		//System.out.println("Solutions: " + Arrays.asList(solutions));
@@ -123,12 +140,11 @@ public class Main {
 				//if(p.getDepends().size() < 1) { System.out.println("No deps"); }
 				for(List<String> clause : p.getDepends()) {
 					boolean foundDep = false; // we only need one from each line
-					//System.out.println("Checking deps");
+					//System.out.println("Checking deps of: " + p.getName() + "=" + p.getVersion());
 					for(String q : clause) {
 						if(!foundDep) {
 							for(String s : set) {
 								//System.out.println("q: " + q + " | s: " + s);
-								// TODO ADD HANDLING FOR VERSIONS!!
 								String[] depSplit = splitPackage(q);
 								String compareSymbol = depSplit[2];
 								String[] sSplit = splitPackage(s);
@@ -177,7 +193,6 @@ public class Main {
 					}
 				}
 				boolean foundConflict = false;
-				// TODO ADD HANDLING FOR VERSIONS!!
 				//System.out.println("Checking conflicts");
 				//if(p.getConflicts().size() > 1) { System.out.println("No conflicts"); }
 				for(String s : p.getConflicts()) {
@@ -311,6 +326,152 @@ public class Main {
 			}
 		}
 		return true;
+	}
+	
+	private static List<String> removeProblemPackages(List<String> set, List<Package> repo) {
+		//System.out.println("removeProblemPackages() called");
+		List<String> removalList = new ArrayList<>();
+		
+		int counter = 0;
+		int max = set.size();
+		for(Package p : repo) {
+			if(counter >= max) { break; }
+			boolean packageRemoved = false;
+			// if p is in the set, then we need its dependencies/conflicts
+			if(set.contains(p.getName() + "=" + p.getVersion())) {
+				counter++;
+				//if(p.getDepends().size() < 1) { System.out.println("No deps"); }
+				for(List<String> clause : p.getDepends()) {
+					boolean foundDep = false; // we only need one from each line
+					//System.out.println("Checking deps");
+					for(String q : clause) {
+						if(!q.contains("=")) {
+							if(!foundDep) {
+								for(String s : set) {
+									//System.out.println("q: " + q + " | s: " + s);
+									String[] depSplit = splitPackage(q);
+									String compareSymbol = depSplit[2];
+									String[] sSplit = splitPackage(s);
+									if(depSplit[0].equals(sSplit[0])) {
+										//System.out.println("compare symbol: " + compareSymbol);
+										switch(compareSymbol) {
+											case "=" :
+												if(q.equals(s)) {
+													foundDep =  true;
+												}
+												break;
+											case "<" :
+											// if depSplit >= sSplit then version installed in set is less than the version specified and we good
+												if(versionCompare(depSplit[1], sSplit[1])) {
+													foundDep =  true;
+												}
+												break;
+											case "<=" :
+												if(versionCompare(depSplit[1], sSplit[1])) {
+													foundDep =  true;
+												}
+												break;
+											case ">" :
+												if(versionCompare(sSplit[1], depSplit[1])) {
+													foundDep =  true;
+												}
+												break;
+											case ">=" :
+												if(versionCompare(sSplit[1], depSplit[1])) {
+													foundDep =  true;
+												}
+												break;
+											default :
+												// if theres no symbol we've already found the dep :)
+												foundDep = true;
+												break;
+										}
+									}
+								}
+							}
+						} else {
+							if(set.contains(q)) {
+								foundDep = true;
+							}
+						}
+					}
+					if(!foundDep) {
+						// WE'RE MISSING A DEPENDENCY!!! PURGE THE PACKAGE!
+						removalList.add(p.getName() + "=" + p.getVersion());
+						packageRemoved = true;
+					}
+				}
+				if(!packageRemoved) {
+					boolean foundConflict = false;
+					//System.out.println("Checking conflicts");
+					//if(p.getConflicts().size() > 1) { System.out.println("No conflicts"); }
+					for(String s : p.getConflicts()) {
+						if(!s.contains("=")) {
+							if(!foundConflict) {
+								for(String t : set) {
+									//System.out.println("s: " + s + " | t: " + t);
+									String[] consSplit = splitPackage(s);
+									String compareSymbol = consSplit[2];
+									String[] tSplit = splitPackage(t);
+									if(consSplit[0].equals(tSplit[0])) {
+										//System.out.println("compare symbol: " + compareSymbol);
+										switch(compareSymbol) {
+											case "=" :
+												if(s.equals(t)) {
+													foundConflict = true;
+												}
+												break;
+											case "<" :
+												if(versionCompare(consSplit[1], tSplit[1])) {
+													foundConflict =  true;
+												}
+												break;
+											case "<=" :
+												if(versionCompare(consSplit[1], tSplit[1])) {
+													foundConflict =  true;
+												}
+												break;
+											case ">" :
+												if(versionCompare(tSplit[1], consSplit[1])) {
+													foundConflict =  true;
+												}
+												break;
+											case ">=" :
+												if(versionCompare(tSplit[1], consSplit[1])) {
+													foundConflict =  true;
+												}
+												break;
+											default :
+												foundConflict = true;
+												break;
+										}
+									}
+								}
+							}
+						} else {
+							if(set.contains(s)) {
+								foundConflict = true;
+							}
+						}
+					}
+					if(foundConflict) {
+						// THERE IS A CONFLICT!!! PURGE THE PACKAGE!
+						removalList.add(p.getName() + "=" + p.getVersion());
+					}
+				}
+			}
+		}
+		
+		for(String s : removalList) {
+			// the removalList could possible contain dupes, maybe an arraylist wasnt the best data
+			// structure for this, but its a simple check to prevent shit hitting the fan...
+			if(set.contains(s)) {
+				set.remove(s);
+				commands.add("-" + s);
+			}
+		}
+		
+		return set;
 	}
 	
 	/**
